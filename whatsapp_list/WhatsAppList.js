@@ -6,7 +6,7 @@ async function getWhatsAppList() {
   const rows = menu.data.map((item) => ({
     id: item._id,
     title: item.name,
-    description: `₹${item.price}`
+    description: `₹${item.price}`,
   }));
 
   return {
@@ -14,19 +14,27 @@ async function getWhatsAppList() {
     type: "interactive",
     interactive: {
       type: "list",
+      header: {
+        type: "text",
+        text: "🍽️ Rajdarbar Restaurant",
+      },
       body: {
-        text: "🍽️ Select Your Food"
+        text:
+          "👋 Hello! How are you?\n\n🍽️ What would you like to order today?",
+      },
+      footer: {
+        text: "Please select an item from the menu",
       },
       action: {
         button: "View Menu",
         sections: [
           {
             title: "Today's Menu",
-            rows
-          }
-        ]
-      }
-    }
+            rows,
+          },
+        ],
+      },
+    },
   };
 }
 

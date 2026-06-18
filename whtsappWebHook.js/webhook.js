@@ -1,49 +1,54 @@
 const express = require("express");
 const router = express.Router();
+const { sendMenu } = require("../whatsapp_list/SendtoWhatsApp");
 
 router.get("/webhook", (req, res) => {
-  console.log("===== GET WEBHOOK =====");
-  console.log("Query:", req.query);
-
   const VERIFY_TOKEN = "rajdarbar_webhook_123";
 
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  console.log("Mode:", mode);
-  console.log("Token:", token);
-  console.log("Challenge:", challenge);
-
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("✅ WEBHOOK VERIFIED");
     return res.status(200).send(challenge);
   }
 
-  console.log("❌ VERIFICATION FAILED");
   return res.sendStatus(403);
 });
 
-router.post("/webhook", (req, res) => {
-  console.log("===== POST WEBHOOK HIT =====");
-  console.log("Headers:", JSON.stringify(req.headers, null, 2));
-  console.log("Body:", JSON.stringify(req.body, null, 2));
+router.post("/webhook", async (req, res) => {
+  try {
+    console.log("===== POST WEBHOOK HIT =====");
+    console.log(JSON.stringify(req.body, null, 2));
 
-  const message =
-    req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const message =
+      req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-  if (message) {
-    console.log("📩 Message From:", message.from);
-    console.log("📩 Message Type:", message.type);
-
-    if (message.text) {
-      console.log("📩 Text:", message.text.body);
+    if (!message) {
+      return res.sendStatus(200);
     }
-  } else {
-    console.log("⚠️ No message found in payload");
-  }
 
-  res.status(200).send("EVENT_RECEIVED");
+    const from = message.from;
+    const text = message?.text?.body?.toLowerCase();
+
+    console.log("📩 From:", from);
+    console.log("📩 Text:", text);
+
+    if (
+      text === "hi" ||
+      text === "hii" ||
+      text === "hello"
+    ) {
+      console.log("🚀 Sending Menu");
+
+      await sendMenu(from);
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error(error);
+    res.sendStatus(500);
+  }
 });
 
 module.exports = router;
