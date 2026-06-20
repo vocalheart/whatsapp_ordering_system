@@ -1,42 +1,41 @@
 const Razorpay = require("razorpay");
-const crypto = require("crypto");
+const crypto   = require("crypto");
 
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
+  key_id:     process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-/**
- * Payment Link banao — customer isko click karke pay karega
- */
 async function createPaymentLink({ amount, phoneNumber, itemName, quantity, orderId }) {
+
+  // ⏰ 5 minutes baad expire
+  const expireBy = Math.floor(Date.now() / 1000) + (5 * 60);
+
   const paymentLink = await razorpay.paymentLink.create({
-    amount: amount * 100, // paise mein
-    currency: "INR",
-    accept_partial: false,
-    description: `${itemName} x${quantity} — Rajdarbar Restaurant`,
+    amount:          amount * 100,
+    currency:        "INR",
+    accept_partial:  false,
+    description:     `${itemName} x${quantity} — Rajdarbar Restaurant`,
     customer: {
       contact: `+${phoneNumber}`,
     },
+    expire_by:       expireBy,
     notify: {
-      sms: false,   // hum WhatsApp se bhejenge
+      sms:   false,
       email: false,
     },
     reminder_enable: false,
     notes: {
       phoneNumber,
-      pendingOrderId: orderId, // session mein pending order track karne ke liye
+      pendingOrderId: orderId,
     },
-    callback_url: `${process.env.APP_URL}/api/payment-success`,
+    callback_url:    `${process.env.APP_URL}/api/payment-success`,
     callback_method: "get",
   });
 
   return paymentLink;
 }
 
-/**
- * Razorpay webhook signature verify karo
- */
 function verifyWebhookSignature(body, signature) {
   const expectedSignature = crypto
     .createHmac("sha256", process.env.RAZORPAY_WEBHOOK_SECRET)
