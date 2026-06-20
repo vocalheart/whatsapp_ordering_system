@@ -5,22 +5,14 @@ const { getMenu } = require("../services/menuService");
 router.get("/list", async (req, res) => {
   try {
     const menu = await getMenu();
-
     const rows = menu.data.map((item) => ({
       id: item._id,
       title: item.name,
       description: `₹${item.price}`,
     }));
-
-    res.json({
-      success: true,
-      rows,
-    });
+    res.json({success: true,rows});
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({success: false, message: error.message});
   }
 });
 

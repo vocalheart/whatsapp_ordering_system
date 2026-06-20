@@ -8,7 +8,6 @@ async function getWhatsAppList() {
     title: item.name,
     description: `₹${item.price}`,
   }));
-
   return {
     messaging_product: "whatsapp",
     type: "interactive",
