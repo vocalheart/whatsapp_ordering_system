@@ -8,9 +8,10 @@ const razorpay = new Razorpay({
 
 async function createPaymentLink({ amount, phoneNumber, itemName, quantity }) {
 
-  // ⏰ 15 minutes baad expire (Razorpay minimum requirement hai)
-  // Hum message mein "5 min" likhenge but actual 15 min set karenge
-  const expireBy = Math.floor(Date.now() / 1000) + (15 * 60);
+  // ⏰ 20 minutes baad expire
+  // Razorpay rule: minimum 15 minutes future mein hona chahiye
+  // Hum 20 min set kar rahe hain taaki clock skew ka bhi koi issue na ho
+  const expireBy = Math.floor(Date.now() / 1000) + (20 * 60);
 
   const linkData = {
     amount:          amount * 100, // paise mein

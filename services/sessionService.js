@@ -12,7 +12,7 @@ async function updateSession(phoneNumber, updates) {
   return await Session.findOneAndUpdate(
     { phoneNumber },
     { ...updates, updatedAt: new Date() },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }  // ← deprecated `new:true` fix
   );
 }
 
@@ -20,14 +20,14 @@ async function resetSession(phoneNumber) {
   return await Session.findOneAndUpdate(
     { phoneNumber },
     {
-      state: "idle",
+      state:        "idle",
       selectedItem: undefined,
-      quantity: undefined,
-      address: undefined,
-      location: undefined,
-      updatedAt: new Date(),
+      quantity:     undefined,
+      address:      undefined,
+      location:     undefined,
+      updatedAt:    new Date(),
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }  // ← deprecated `new:true` fix
   );
 }
 
