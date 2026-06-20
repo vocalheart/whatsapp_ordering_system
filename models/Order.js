@@ -1,26 +1,37 @@
 const mongoose = require("mongoose");
 
 const orderItemSchema = new mongoose.Schema({
-  itemId: { type: String, required: true },
-  name: { type: String, required: true },
-  price: { type: Number, required: true },
+  itemId:   { type: String, required: true },
+  name:     { type: String, required: true },
+  price:    { type: Number, required: true },
   quantity: { type: Number, required: true },
 });
 
 const orderSchema = new mongoose.Schema(
   {
-    phoneNumber: { type: String, required: true },
-    items: [orderItemSchema],
-    totalAmount: { type: Number, required: true },
-    address: { type: String, required: true },
+    phoneNumber:  { type: String, required: true },
+    items:        [orderItemSchema],
+    totalAmount:  { type: Number, required: true },
+    address:      { type: String, required: true },
     location: {
-      latitude: { type: Number },
+      latitude:  { type: Number },
       longitude: { type: Number },
     },
+
+    // ── Payment ──────────────────────────────────────────────
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed"],
+      default: "pending",
+    },
+    paymentLinkId: { type: String },   // Razorpay payment_link id
+    paymentId:     { type: String },   // Razorpay payment_id (after success)
+
+    // ── Order Status ─────────────────────────────────────────
     status: {
       type: String,
-      enum: ["pending", "confirmed", "preparing", "delivered", "cancelled"],
-      default: "pending",
+      enum: ["awaiting_payment", "confirmed", "preparing", "delivered", "cancelled"],
+      default: "awaiting_payment",
     },
   },
   { timestamps: true }

@@ -1,15 +1,23 @@
 const express = require("express");
-const router = express.Router();
+const router  = express.Router();
 
 const { getSession, updateSession, resetSession } = require("../services/sessionService");
-const { createOrder } = require("../services/orderService");
-const {sendMenu,sendWelcome,sendQuantityRequest,sendAddressChoice,sendAskAddressText,sendAskLocation,sendOrderConfirmation,sendText,} = require("../whatsapp_list/SendtoWhatsApp");
+const { createPendingOrder, confirmOrder, failOrder } = require("../services/orderService");
+const { createPaymentLink, verifyWebhookSignature }   = require("../services/razorpayService");
+const {
+  sendMenu, sendWelcome, sendText,
+  sendQuantityRequest, sendAddressChoice,
+  sendAskAddressText, sendAskLocation,
+  sendPaymentLink, sendOrderConfirmation, sendPaymentFailed,
+} = require("../whatsapp_list/SendtoWhatsApp");
 
-// ─── Webhook Verification ─────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+//  WhatsApp Webhook Verification
+// ════════════════════════════════════════════════════════════
 router.get("/webhook", (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "rajdarbar_webhook_123";
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
+  const mode      = req.query["hub.mode"];
+  const token     = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
@@ -19,35 +27,30 @@ router.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-// ─── Webhook POST Handler ─────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+//  WhatsApp Webhook — Incoming Messages
+// ════════════════════════════════════════════════════════════
 router.post("/webhook", async (req, res) => {
-  // Always respond 200 quickly to WhatsApp
-  res.sendStatus(200);
+  res.sendStatus(200); // WhatsApp ko turant 200 do
 
   try {
-    const entry = req.body?.entry?.[0];
-    const change = entry?.changes?.[0]?.value;
-    const message = change?.messages?.[0];
-
+    const message = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!message) return;
 
-    const from = message.from;
-    const msgType = message.type; // text | interactive | location
-
-    console.log(`\n📩 From: ${from} | Type: ${msgType}`);
+    const from    = message.from;
+    const msgType = message.type;
+    console.log(`\nFrom: ${from} | Type: ${msgType}`);
 
     const session = await getSession(from);
     console.log(`📌 State: ${session.state}`);
 
-    // ── Handle based on message type ──────────────────────────────────────────
-
-    // 1️⃣ TEXT MESSAGE
+    // ── TEXT ─────────────────────────────────────────────────────────────────
     if (msgType === "text") {
-      const text = message.text?.body?.trim().toLowerCase();
-      console.log(`💬 Text: "${text}"`);
+      const rawText = message.text?.body?.trim();
+      const text    = rawText?.toLowerCase();
 
-      // Greetings → Welcome + Menu
-      if (["hi", "hii", "hello", "helo", "hey", "namaste"].includes(text)) {
+      // Greetings
+      if (["hi","hii","hello","helo","hey","namaste"].includes(text)) {
         await resetSession(from);
         await sendWelcome(from);
         await sendMenu(from);
@@ -55,7 +58,7 @@ router.post("/webhook", async (req, res) => {
         return;
       }
 
-      // Quantity input
+      // Quantity
       if (session.state === "awaiting_quantity") {
         const qty = parseInt(text);
         if (isNaN(qty) || qty < 1 || qty > 20) {
@@ -67,59 +70,50 @@ router.post("/webhook", async (req, res) => {
         return;
       }
 
-      // Address text input
+      // Address text
       if (session.state === "awaiting_address_text") {
-        if (text.length < 10) {
-          await sendText(from, "⚠️ Address thoda detail mein likhein (gali, mohalla, sheher):");
+        if (rawText.length < 10) {
+          await sendText(from, "Address thoda detail mein likhein (gali, mohalla, sheher):");
           return;
         }
-        const fullAddress = message.text.body.trim(); // preserve original case
-        await updateSession(from, { address: fullAddress, state: "order_confirmed" });
-        await placeOrder(from, session, session.quantity, fullAddress, null);
+        await updateSession(from, { address: rawText, state: "awaiting_payment" });
+        await initiatePayment(from, session, session.quantity, rawText, null);
         return;
       }
 
-      // Default / unknown state
-      await sendText(
-        from,
-        '👋 *Rajdarbar Restaurant*\n\nOrder karne ke liye "Hi" type karein.'
-      );
+      // Default
+      await sendText(from, '*Rajdarbar Restaurant*\n\nOrder karne ke liye *"Hi"* type karein.');
     }
 
-    // 2️⃣ INTERACTIVE MESSAGE (List reply or Button reply)
+    // ── INTERACTIVE (List / Button) ───────────────────────────────────────────
     else if (msgType === "interactive") {
-      const interactiveType = message.interactive?.type;
+      const iType = message.interactive?.type;
 
-      // List reply → item selected from menu
-      if (interactiveType === "list_reply") {
-        const reply = message.interactive.list_reply;
-        const itemId = reply.id;
-        const itemName = reply.title;
-        const priceStr = reply.description; // "₹120"
-        const price = parseFloat(priceStr.replace(/[^\d.]/g, ""));
-
-        console.log(`🍽️ Item selected: ${itemName} (₹${price})`);
+      // Menu item selected
+      if (iType === "list_reply") {
+        const reply   = message.interactive.list_reply;
+        const itemId  = reply.id;
+        const name    = reply.title;
+        const price   = parseFloat(reply.description.replace(/[^\d.]/g, ""));
 
         await updateSession(from, {
           state: "awaiting_quantity",
-          selectedItem: { itemId, name: itemName, price },
+          selectedItem: { itemId, name, price },
         });
-        await sendQuantityRequest(from, itemName, price);
+        await sendQuantityRequest(from, name, price);
         return;
       }
 
-      // Button reply → address choice
-      if (interactiveType === "button_reply") {
-        const buttonId = message.interactive.button_reply?.id;
-        console.log(`🔘 Button: ${buttonId}`);
+      // Address choice buttons
+      if (iType === "button_reply") {
+        const btnId = message.interactive.button_reply?.id;
 
-        if (buttonId === "address_text") {
+        if (btnId === "address_text") {
           await updateSession(from, { state: "awaiting_address_text" });
           await sendAskAddressText(from);
           return;
         }
-
-        if (buttonId === "address_location") {
+        if (btnId === "address_location") {
           await updateSession(from, { state: "awaiting_location" });
           await sendAskLocation(from);
           return;
@@ -127,54 +121,131 @@ router.post("/webhook", async (req, res) => {
       }
     }
 
-    // 3️⃣ LOCATION MESSAGE
+    // ── LOCATION ──────────────────────────────────────────────────────────────
     else if (msgType === "location") {
       if (session.state === "awaiting_location") {
         const { latitude, longitude, name, address } = message.location;
-        const locationLabel =
-          address || name || `${latitude}, ${longitude}`;
+        const locationLabel = address || name || `${latitude}, ${longitude}`;
 
         await updateSession(from, {
           address: locationLabel,
           location: { latitude, longitude },
-          state: "order_confirmed",
+          state: "awaiting_payment",
         });
-        await placeOrder(from, session, session.quantity, locationLabel, {
-          latitude,
-          longitude,
-        });
+        await initiatePayment(from, session, session.quantity, locationLabel, { latitude, longitude });
         return;
       }
-
-      await sendText(from, '📍 Location mila! Order ke liye "Hi" type karein.');
+      await sendText(from, '📍 Location mila! Order ke liye *"Hi"* type karein.');
     }
 
-    // 4️⃣ UNHANDLED TYPE
-    else {
-      console.log(`⚠️ Unhandled message type: ${msgType}`);
-    }
-  } catch (error) {
-    console.error("❌ Webhook error:", error);
+  } catch (err) {
+    console.error("❌ Webhook error:", err);
   }
 });
 
-// ─── Place Order Helper ────────────────────────────────────────────────────────
-async function placeOrder(phoneNumber, session, quantity, address, location) {
+// ════════════════════════════════════════════════════════════
+//  Razorpay Webhook — Payment Events
+// ════════════════════════════════════════════════════════════
+router.post("/razorpay-webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
-    const order = await createOrder({
+    const signature = req.headers["x-razorpay-signature"];
+    const body      = JSON.parse(req.body);
+
+    // Signature verify karo
+    if (!verifyWebhookSignature(body, signature)) {
+      console.warn("Invalid Razorpay webhook signature");
+      return res.sendStatus(400);
+    }
+
+    const event = body.event;
+    console.log(`\nRazorpay Event: ${event}`);
+
+    // ── Payment Link Paid ────────────────────────────────────
+    if (event === "payment_link.paid") {
+      const payload       = body.payload.payment_link.entity;
+      const paymentLinkId = payload.id;
+      const paymentId     = body.payload.payment.entity.id;
+      const phoneNumber   = payload.notes?.phoneNumber;
+
+      console.log(`Payment paid: ${paymentId} | Link: ${paymentLinkId}`);
+
+      // Order confirm karo DB mein
+      const order = await confirmOrder(paymentLinkId, paymentId);
+
+      if (order && phoneNumber) {
+        await sendOrderConfirmation(phoneNumber, order);
+        await resetSession(phoneNumber);
+        console.log(`Order confirmed: ${order._id}`);
+      }
+    }
+
+    // ── Payment Link Expired / Cancelled ─────────────────────
+    if (event === "payment_link.expired" || event === "payment_link.cancelled") {
+      const payload       = body.payload.payment_link.entity;
+      const paymentLinkId = payload.id;
+      const phoneNumber   = payload.notes?.phoneNumber;
+
+      console.log(`❌ Payment failed/expired: ${paymentLinkId}`);
+
+      await failOrder(paymentLinkId);
+
+      if (phoneNumber) {
+        await sendPaymentFailed(phoneNumber);
+        await resetSession(phoneNumber);
+      }
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("Razorpay webhook error:", err);
+    res.sendStatus(500);
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+//  Payment Initiate Helper
+// ════════════════════════════════════════════════════════════
+async function initiatePayment(phoneNumber, session, quantity, address, location) {
+  try {
+    const item        = session.selectedItem;
+    const totalAmount = item.price * quantity;
+
+    // Razorpay payment link banao
+    const paymentLink = await createPaymentLink({
+      amount: totalAmount,
       phoneNumber,
-      item: session.selectedItem,
+      itemName: item.name,
+      quantity,
+      orderId: `temp_${phoneNumber}_${Date.now()}`,
+    });
+
+    // Pending order DB mein save karo
+    const order = await createPendingOrder({
+      phoneNumber,
+      item,
       quantity,
       address,
       location,
+      paymentLinkId: paymentLink.id,
     });
 
-    console.log(`✅ Order created: ${order._id}`);
-    await sendOrderConfirmation(phoneNumber, order, address);
-    await resetSession(phoneNumber);
+    console.log(`💳 Payment link created: ${paymentLink.short_url}`);
+    console.log(`📝 Pending order: ${order._id}`);
+
+    // Customer ko payment link bhejo
+    await sendPaymentLink(phoneNumber, {
+      itemName:    item.name,
+      quantity,
+      totalAmount,
+      paymentUrl:  paymentLink.short_url,
+      orderId:     order._id,
+    });
+
+    await updateSession(phoneNumber, { state: "awaiting_payment" });
+
   } catch (err) {
-    console.error("❌ Order creation failed:", err);
-    await sendText(phoneNumber, "⚠️ Order place karne mein problem aai. Please dobara try karein.");
+    console.error("❌ Payment initiation failed:", err);
+    await sendText(phoneNumber, "⚠️ Payment link banane mein problem aai. Dobara *\"Hi\"* type karein.");
     await resetSession(phoneNumber);
   }
 }
