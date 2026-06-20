@@ -31,7 +31,7 @@ router.get("/webhook", (req, res) => {
 //  WhatsApp Webhook — Incoming Messages
 // ════════════════════════════════════════════════════════════
 router.post("/webhook", async (req, res) => {
-  res.sendStatus(200);
+  res.sendStatus(200); // WhatsApp ko turant 200 do
 
   try {
     const message = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -58,7 +58,7 @@ router.post("/webhook", async (req, res) => {
         return;
       }
 
-      // Agar awaiting_payment state mein kuch type kiya
+      // Awaiting payment state
       if (session.state === "awaiting_payment") {
         await sendText(from, '⏳ Aapka payment link abhi bhi active hai. Please pehle payment karein.\n\nNaya order karne ke liye *"Hi"* type karein.');
         return;
@@ -87,7 +87,7 @@ router.post("/webhook", async (req, res) => {
         return;
       }
 
-      // Koi bhi aur message — sirf prompt, menu nahi
+      // Default
       await sendText(from, '👋 *Rajdarbar Restaurant*\n\nOrder karne ke liye *"Hi"* type karein.');
     }
 
@@ -95,6 +95,7 @@ router.post("/webhook", async (req, res) => {
     else if (msgType === "interactive") {
       const iType = message.interactive?.type;
 
+      // Menu item selected
       if (iType === "list_reply") {
         const reply  = message.interactive.list_reply;
         const itemId = reply.id;
@@ -109,6 +110,7 @@ router.post("/webhook", async (req, res) => {
         return;
       }
 
+      // Address choice buttons
       if (iType === "button_reply") {
         const btnId = message.interactive.button_reply?.id;
 
@@ -125,7 +127,7 @@ router.post("/webhook", async (req, res) => {
       }
     }
 
-    // ── LOCATION ──────────────────────────────────────────────────────────────
+    // ── LOCATION ─────────────────────────────────────────────────────────────
     else if (msgType === "location") {
       if (session.state === "awaiting_location") {
         const { latitude, longitude, name, address } = message.location;
@@ -139,11 +141,10 @@ router.post("/webhook", async (req, res) => {
         await initiatePayment(from, session, session.quantity, locationLabel, { latitude, longitude });
         return;
       }
-      // Wrong state mein location — sirf prompt
       await sendText(from, '📍 Yeh location is waqt kaam nahi aayega.\n\nOrder ke liye *"Hi"* type karein.');
     }
 
-    // ── KOI BHI AUR TYPE (image, audio, video, etc.) ─────────────────────────
+    // ── IMAGE / AUDIO / VIDEO / etc. ─────────────────────────────────────────
     else {
       await sendText(from, '😊 Hum sirf text orders process karte hain.\n\nOrder karne ke liye *"Hi"* type karein.');
     }
@@ -177,7 +178,6 @@ router.post("/razorpay-webhook", express.raw({ type: "application/json" }), asyn
       const phoneNumber   = payload.notes?.phoneNumber;
 
       const order = await confirmOrder(paymentLinkId, paymentId);
-
       if (order && phoneNumber) {
         await sendOrderConfirmation(phoneNumber, order);
         await resetSession(phoneNumber);
@@ -186,14 +186,12 @@ router.post("/razorpay-webhook", express.raw({ type: "application/json" }), asyn
     }
 
     // ── Payment Expired / Cancelled ──────────────────────────
-    // ⚠️ Sirf ek simple message — menu AUTO nahi bhejenge
     if (event === "payment_link.expired" || event === "payment_link.cancelled") {
       const payload       = body.payload.payment_link.entity;
       const paymentLinkId = payload.id;
       const phoneNumber   = payload.notes?.phoneNumber;
 
       await failOrder(paymentLinkId);
-
       if (phoneNumber) {
         await sendText(
           phoneNumber,
@@ -219,14 +217,17 @@ async function initiatePayment(phoneNumber, session, quantity, address, location
     const item        = session.selectedItem;
     const totalAmount = item.price * quantity;
 
+    console.log(`💳 Payment link bana raha hoon: ₹${totalAmount} for ${item.name} x${quantity}`);
+
+    // Razorpay payment link banao
     const paymentLink = await createPaymentLink({
       amount:    totalAmount,
       phoneNumber,
       itemName:  item.name,
       quantity,
-      orderId:   `temp_${phoneNumber}_${Date.now()}`,
     });
 
+    // Pending order DB mein save karo
     const order = await createPendingOrder({
       phoneNumber,
       item,
@@ -236,9 +237,9 @@ async function initiatePayment(phoneNumber, session, quantity, address, location
       paymentLinkId: paymentLink.id,
     });
 
-    console.log(`💳 Payment link: ${paymentLink.short_url}`);
-    console.log(`📝 Pending order: ${order._id}`);
+    console.log(`📝 Pending order created: ${order._id}`);
 
+    // Customer ko payment link bhejo
     await sendPaymentLink(phoneNumber, {
       itemName:    item.name,
       quantity,
@@ -248,11 +249,23 @@ async function initiatePayment(phoneNumber, session, quantity, address, location
     });
 
     await updateSession(phoneNumber, { state: "awaiting_payment" });
+    console.log(`✅ Payment link bheja gaya: ${paymentLink.short_url}`);
 
   } catch (err) {
-    console.error("❌ Payment initiation failed:", err);
-    await sendText(phoneNumber, '⚠️ Payment link banane mein problem aai.\n\nDobara *"Hi"* type karein.');
+    // Detailed error log karo
+    console.error("❌ initiatePayment failed:");
+    console.error("  Message:", err.message);
+    console.error("  Razorpay error:", JSON.stringify(err?.error || {}, null, 2));
+
+    // Session reset karo lekin user ko generic error MAT bhejo
+    // Pehle session reset
     await resetSession(phoneNumber);
+
+    // Phir error message
+    await sendText(
+      phoneNumber,
+      `⚠️ Kuch technical problem aai, please thodi der baad dobara try karein.\n\n*"Hi"* type karke order restart karein.`
+    );
   }
 }
 
