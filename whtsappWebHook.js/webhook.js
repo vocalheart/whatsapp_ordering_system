@@ -31,7 +31,7 @@ router.get("/webhook", (req, res) => {
 //  WhatsApp Webhook — Incoming Messages
 // ════════════════════════════════════════════════════════════
 router.post("/webhook", async (req, res) => {
-  res.sendStatus(200); // WhatsApp ko turant 200 do
+  res.sendStatus(200);
 
   try {
     const message = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -82,8 +82,20 @@ router.post("/webhook", async (req, res) => {
           await sendText(from, "⚠️ Address thoda detail mein likhein (gali, mohalla, sheher):");
           return;
         }
-        await updateSession(from, { address: rawText, state: "awaiting_payment" });
-        await initiatePayment(from, session, session.quantity, rawText, null);
+        await updateSession(from, { address: rawText, state: "awaiting_mobile" });
+        await sendAskMobile(from);
+        return;
+      }
+
+      // Mobile number
+      if (session.state === "awaiting_mobile") {
+        const mobile = rawText.replace(/\s+/g, "");
+        if (!/^[6-9]\d{9}$/.test(mobile)) {
+          await sendText(from, "⚠️ Valid 10-digit mobile number daalen (jaise: 9876543210):");
+          return;
+        }
+        await updateSession(from, { mobile, state: "awaiting_payment" });
+        await initiatePayment(from, { ...session.toObject(), mobile }, session.quantity, session.address, session.location);
         return;
       }
 
@@ -136,9 +148,9 @@ router.post("/webhook", async (req, res) => {
         await updateSession(from, {
           address:  locationLabel,
           location: { latitude, longitude },
-          state:    "awaiting_payment",
+          state:    "awaiting_mobile",
         });
-        await initiatePayment(from, session, session.quantity, locationLabel, { latitude, longitude });
+        await sendAskMobile(from);
         return;
       }
       await sendText(from, '📍 Yeh location is waqt kaam nahi aayega.\n\nOrder ke liye *"Hi"* type karein.');
@@ -210,16 +222,26 @@ router.post("/razorpay-webhook", express.raw({ type: "application/json" }), asyn
 });
 
 // ════════════════════════════════════════════════════════════
-//  Payment Initiate Helper
+//  Helpers
 // ════════════════════════════════════════════════════════════
+
+// Mobile number maango
+async function sendAskMobile(phoneNumber) {
+  await sendText(
+    phoneNumber,
+    "📱 Apna *10-digit mobile number* daalen:\n_(Delivery ke liye contact karne ke liye)_"
+  );
+}
+
+// Payment initiate karo
 async function initiatePayment(phoneNumber, session, quantity, address, location) {
   try {
     const item        = session.selectedItem;
     const totalAmount = item.price * quantity;
+    const mobile      = session.mobile;
 
     console.log(`💳 Payment link bana raha hoon: ₹${totalAmount} for ${item.name} x${quantity}`);
 
-    // Razorpay payment link banao
     const paymentLink = await createPaymentLink({
       amount:    totalAmount,
       phoneNumber,
@@ -227,23 +249,23 @@ async function initiatePayment(phoneNumber, session, quantity, address, location
       quantity,
     });
 
-    // Pending order DB mein save karo
     const order = await createPendingOrder({
       phoneNumber,
       item,
       quantity,
       address,
       location,
+      mobile,
       paymentLinkId: paymentLink.id,
     });
 
     console.log(`📝 Pending order created: ${order._id}`);
 
-    // Customer ko payment link bhejo
     await sendPaymentLink(phoneNumber, {
       itemName:    item.name,
       quantity,
       totalAmount,
+      mobile,
       paymentUrl:  paymentLink.short_url,
       orderId:     order._id,
     });
@@ -252,16 +274,11 @@ async function initiatePayment(phoneNumber, session, quantity, address, location
     console.log(`✅ Payment link bheja gaya: ${paymentLink.short_url}`);
 
   } catch (err) {
-    // Detailed error log karo
     console.error("❌ initiatePayment failed:");
     console.error("  Message:", err.message);
     console.error("  Razorpay error:", JSON.stringify(err?.error || {}, null, 2));
 
-    // Session reset karo lekin user ko generic error MAT bhejo
-    // Pehle session reset
     await resetSession(phoneNumber);
-
-    // Phir error message
     await sendText(
       phoneNumber,
       `⚠️ Kuch technical problem aai, please thodi der baad dobara try karein.\n\n*"Hi"* type karke order restart karein.`

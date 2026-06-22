@@ -10,6 +10,7 @@ const orderItemSchema = new mongoose.Schema({
 const orderSchema = new mongoose.Schema(
   {
     phoneNumber:  { type: String, required: true },
+    mobile:       { type: String },   // customer ka delivery contact number
     items:        [orderItemSchema],
     totalAmount:  { type: Number, required: true },
     address:      { type: String, required: true },
@@ -17,17 +18,13 @@ const orderSchema = new mongoose.Schema(
       latitude:  { type: Number },
       longitude: { type: Number },
     },
-
-    // ── Payment ──────────────────────────────────────────────
     paymentStatus: {
       type: String,
       enum: ["pending", "paid", "failed"],
       default: "pending",
     },
-    paymentLinkId: { type: String },   // Razorpay payment_link id
-    paymentId:     { type: String },   // Razorpay payment_id (after success)
-
-    // ── Order Status ─────────────────────────────────────────
+    paymentLinkId: { type: String },
+    paymentId:     { type: String },
     status: {
       type: String,
       enum: ["awaiting_payment", "confirmed", "preparing", "delivered", "cancelled"],

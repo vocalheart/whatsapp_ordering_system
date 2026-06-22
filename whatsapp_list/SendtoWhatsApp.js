@@ -75,42 +75,68 @@ async function sendAskLocation(phoneNumber) {
 }
 
 // ─── Payment Link bhejo ───────────────────────────────────────────────────────
-async function sendPaymentLink(phoneNumber, { itemName, quantity, totalAmount, paymentUrl, orderId }) {
+async function sendPaymentLink(phoneNumber, { itemName, quantity, totalAmount, mobile, paymentUrl, orderId }) {
   await sendText(
     phoneNumber,
     `🧾 *Order Summary*\n\n` +
     `🍽️ Item: *${itemName}*\n` +
     `🔢 Quantity: *${quantity}*\n` +
+    `📱 Mobile: *${mobile}*\n` +
     `💰 Total: *₹${totalAmount}*\n\n` +
-    `💳 Neeche diye link pe click karke payment karein:\n` +
+    `💳 Payment karne ke liye neeche diye link pe click karein:\n` +
     `👉 ${paymentUrl}\n\n` +
-    `⚠️ Payment hone ke baad hi aapka order place hoga.\n` +
+    `⚠️ Yeh link *20 minutes* mein expire ho jayega.\n` +
     `_Order ID: ${orderId}_`
   );
 }
 
-// ─── Order Confirmed (payment ke baad) ───────────────────────────────────────
+// ─── Order Confirmed + Feedback Button (payment ke baad) ─────────────────────
 async function sendOrderConfirmation(phoneNumber, order) {
   const item = order.items[0];
+
+  // Step 1: Confirmation message
   await sendText(
     phoneNumber,
-    `🎉 *Payment Received! Order Confirmed!*\n\n` +
+    `🎉 *Congratulations! Your Order is Successful!*\n\n` +
     `📦 Item: *${item.name}*\n` +
     `🔢 Quantity: *${item.quantity}*\n` +
     `💰 Total Paid: *₹${order.totalAmount}*\n` +
-    `📍 Address: ${order.address}\n\n` +
-    `⏱️ Aapka order *30-45 minutes* mein deliver ho jayega.\n` +
+    `📍 Address: ${order.address}\n` +
+    (order.mobile ? `📱 Mobile: ${order.mobile}\n` : "") +
+    `\n⏱️ Aapka order *30-45 minutes* mein deliver ho jayega.\n` +
     `🆔 Order ID: \`${order._id}\`\n\n` +
     `_Rajdarbar Restaurant – Swad jo dil ko chhu jaye 🍽️_`
   );
+
+  // Step 2: Feedback button (CTA button message)
+  await api.post("/messages", {
+    messaging_product: "whatsapp",
+    to: phoneNumber,
+    type: "interactive",
+    interactive: {
+      type: "cta_url",
+      body: {
+        text: "⭐ Aapka experience kaisa raha? Humein apna feedback zaroor dein!",
+      },
+      action: {
+        name: "cta_url",
+        parameters: {
+          display_text: "📝 Feedback Dein",
+          url: "https://www.reviewbadhao.com/form/1922158485",
+        },
+      },
+    },
+  });
 }
 
-// ─── Payment Failed ───────────────────────────────────────────────────────────
-async function sendPaymentFailed(phoneNumber) {
-  await sendText(
-    phoneNumber,
-    `❌ *Payment unsuccessful!*\n\nAapka order place nahi hua.\n\nDobara order karne ke liye *"Hi"* type karein.`
-  );
-}
-
-module.exports = {sendText,sendMenu,sendWelcome,sendQuantityRequest,sendAddressChoice,sendAskAddressText,sendAskLocation,sendPaymentLink,sendOrderConfirmation,sendPaymentFailed,};
+module.exports = {
+  sendText,
+  sendMenu,
+  sendWelcome,
+  sendQuantityRequest,
+  sendAddressChoice,
+  sendAskAddressText,
+  sendAskLocation,
+  sendPaymentLink,
+  sendOrderConfirmation,
+};
