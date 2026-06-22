@@ -5,7 +5,7 @@ const connectDB  = require("./database/database.js");
 const menu       = require("./menu/menu.js");
 const { sendMenu } = require("./whatsapp_list/SendtoWhatsApp");
 const webhookRoutes = require("./whtsappWebHook.js/webhook");
-
+const allOrders = require('./getAllOrders/allOrder.js')
 const app = express();
 
 connectDB();
@@ -23,7 +23,7 @@ app.use((req, res, next) => {
 });
 
 app.get("/", (req, res) => res.send("🍽️ Rajdarbar WhatsApp Bot Running"));
-
+app.use('/api', allOrders); // All Orders routes
 app.use("/menu", menu);
 app.use("/api", webhookRoutes);
 
