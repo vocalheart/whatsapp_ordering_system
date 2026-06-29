@@ -50,6 +50,26 @@ app.get("/send-menu", async (req, res) => {
   }
 });
 
+
+
+app.get('/privacy-policy', (req, res) => {
+  res.send(`
+    <h1>Privacy Policy</h1>
+    <p>A1Meals Ordering Bot collects user messages for order processing only.</p>
+    <p>We do not sell or share personal data with third parties.</p>
+    <p>Users may request data deletion by contacting support.</p>
+  `);
+});
+
+app.get('/privacy-policy', (req, res) => {
+  res.send(`
+    <h1>Privacy Policy</h1>
+    <p>A1Meals Ordering Bot collects user messages for order processing only.</p>
+    <p>We do not sell or share personal data with third parties.</p>
+    <p>Users may request data deletion by contacting support.</p>
+  `);
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
