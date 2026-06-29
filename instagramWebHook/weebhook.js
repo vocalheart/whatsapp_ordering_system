@@ -8,9 +8,8 @@ const IG_ACCESS_TOKEN = process.env.IG_ACCESS_TOKEN;
 const userOrders = {};
 
 function formatMenu(menuData) {
-  const items = menuData.data;
+  const items = menuData.data || [];
   let text = "🍽️ Rajdarbar Restaurant Menu\n\n";
-
   items.forEach((item, index) => {
     text += `${index + 1}. ${item.name} — ₹${item.price}\n`;
   });
@@ -22,22 +21,18 @@ function formatMenu(menuData) {
 async function sendInstagramMessage(recipientId, messageText) {
   try {
     const response = await axios.post(
-      "https://graph.facebook.com/v23.0/me/messages",
+      "https://graph.facebook.com/v25.0/me/messages",
       {
-        recipient: {
-          id: recipientId,
-        },
-        message: {
-          text: messageText,
-        },
+        recipient: { id: recipientId },
+        message: { text: messageText }
       },
       {
         params: {
-          access_token: IG_ACCESS_TOKEN,
+          access_token: IG_ACCESS_TOKEN
         },
         headers: {
-          "Content-Type": "application/json",
-        },
+          "Content-Type": "application/json"
+        }
       }
     );
 
@@ -50,49 +45,70 @@ async function sendInstagramMessage(recipientId, messageText) {
 
 // WEBHOOK VERIFY
 router.get("/webhook", (req, res) => {
-  try {
-    const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
-    const challenge = req.query["hub.challenge"];
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
 
-    if (mode === "subscribe" && token === IG_VERIFY_TOKEN) {
-      console.log("WEBHOOK VERIFIED");
-      return res.status(200).send(challenge);
-    }
-
-    return res.sendStatus(403);
-  } catch (error) {
-    console.log(error);
-    return res.sendStatus(500);
+  if (mode === "subscribe" && token === IG_VERIFY_TOKEN) {
+    console.log("WEBHOOK VERIFIED");
+    return res.status(200).send(challenge);
   }
+
+  return res.sendStatus(403);
 });
+
+// Extract message helper
+function extractMessage(body) {
+  const entry = body?.entry?.[0];
+  if (!entry) return null;
+
+  // Instagram messaging format
+  const messaging = entry.messaging?.[0];
+  if (messaging) {
+    if (messaging.read) return { ignore: "READ_EVENT" };
+    if (messaging.message_edit) return { ignore: "MESSAGE_EDIT" };
+    if (messaging.reaction) return { ignore: "REACTION_EVENT" };
+
+    return {
+      senderId: messaging.sender?.id,
+      message: messaging.message?.text
+    };
+  }
+
+  // WhatsApp style changes payload
+  const changeMsg = entry?.changes?.[0]?.value?.messages?.[0];
+  if (changeMsg) {
+    return {
+      senderId: changeMsg.from,
+      message: changeMsg.text?.body
+    };
+  }
+
+  return null;
+}
 
 // RECEIVE EVENTS
 router.post("/webhook", async (req, res) => {
   try {
-    console.log("FULL WEBHOOK BODY:");
+    console.log("========== WEBHOOK ==========");
     console.dir(req.body, { depth: null });
 
-    const messaging = req.body?.entry?.[0]?.messaging?.[0];
+    const data = extractMessage(req.body);
 
-    if (!messaging) {
-      console.log("No messaging object");
+    if (!data) {
+      console.log("No valid message payload");
       return res.sendStatus(200);
     }
 
-    console.log("EVENT KEYS:", Object.keys(messaging));
-
-    // Ignore edit events
-    if (messaging.message_edit) {
-      console.log("Message edit event ignored");
+    if (data.ignore) {
+      console.log("Ignored:", data.ignore);
       return res.sendStatus(200);
     }
 
-    const senderId = messaging.sender?.id;
-    const message = messaging.message?.text;
+    const { senderId, message } = data;
 
     if (!senderId || !message) {
-      console.log("No sender or message text");
+      console.log("Missing sender/message");
       return res.sendStatus(200);
     }
 
@@ -120,13 +136,13 @@ HELP → Customer Support`
 
       userOrders[senderId] = {
         step: "SELECT_ITEM",
-        menu: menu.data,
+        menu: menu.data
       };
 
       await sendInstagramMessage(senderId, menuText);
     }
 
-    // Select Item
+    // Select item
     else if (
       userOrders[senderId] &&
       userOrders[senderId].step === "SELECT_ITEM"
@@ -139,7 +155,7 @@ HELP → Customer Support`
 
         userOrders[senderId] = {
           step: "SELECT_QTY",
-          item,
+          item
         };
 
         await sendInstagramMessage(
@@ -161,10 +177,7 @@ Enter quantity:`
       const qty = Number(msg);
 
       if (!qty || qty <= 0) {
-        await sendInstagramMessage(
-          senderId,
-          "Please enter valid quantity"
-        );
+        await sendInstagramMessage(senderId, "Please enter valid quantity");
       } else {
         const item = userOrders[senderId].item;
         const total = qty * item.price;
@@ -182,12 +195,17 @@ Total: ₹${total}
 Our team will contact you soon.`
         );
       }
+    } else {
+      await sendInstagramMessage(
+        senderId,
+        "Unknown command. Type MENU"
+      );
     }
 
     return res.sendStatus(200);
   } catch (error) {
     console.log("WEBHOOK ERROR:");
-    console.log(error);
+    console.dir(error, { depth: null });
     return res.sendStatus(500);
   }
 });
