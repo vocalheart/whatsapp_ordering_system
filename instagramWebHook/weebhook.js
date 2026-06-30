@@ -5,6 +5,9 @@ const { getMenu } = require("../services/menuService");
 const IG_VERIFY_TOKEN = process.env.IG_VERIFY_TOKEN;
 const IG_ACCESS_TOKEN = process.env.IG_ACCESS_TOKEN;
 
+
+console.log("IG_ACCESS_TOKEN length:", process.env.IG_ACCESS_TOKEN?.length);
+console.log("IG_VERIFY_TOKEN length:", process.env.IG_VERIFY_TOKEN?.length);
 const userOrders = {};
 
 function formatMenu(menuData) {

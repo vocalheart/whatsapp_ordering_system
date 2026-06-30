@@ -73,18 +73,13 @@ app.get('/privacy-policy', (req, res) => {
 app.get('/data-deletion', (req, res) => {
   res.send(`
     <h1>Data Deletion Instructions</h1>
-
     <p>A1Meals Ordering Bot allows users to request deletion of their personal data.</p>
-
     <h3>How to Request Deletion</h3>
     <p>Send an email to: ritu09016@gmail.com with the subject "Data Deletion Request".</p>
-
     <h3>Required Information</h3>
     <p>Please include your Instagram username or phone number associated with your account.</p>
-
     <h3>Processing Time</h3>
     <p>All valid deletion requests will be processed within 7 business days.</p>
-
     <h3>Contact</h3>
     <p>Email: ritu09016@gmail.com</p>
   `);
