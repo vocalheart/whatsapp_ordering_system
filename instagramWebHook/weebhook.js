@@ -8,6 +8,15 @@ const IG_ACCESS_TOKEN = process.env.IG_ACCESS_TOKEN;
 
 console.log("IG_ACCESS_TOKEN length:", process.env.IG_ACCESS_TOKEN?.length);
 console.log("IG_VERIFY_TOKEN length:", process.env.IG_VERIFY_TOKEN?.length);
+console.log(
+  "TOKEN START:",
+  process.env.IG_ACCESS_TOKEN?.slice(0, 15)
+);
+
+console.log(
+  "TOKEN END:",
+  process.env.IG_ACCESS_TOKEN?.slice(-15)
+);
 const userOrders = {};
 
 function formatMenu(menuData) {
