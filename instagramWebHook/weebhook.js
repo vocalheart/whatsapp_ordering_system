@@ -12,7 +12,6 @@ console.log(
   "TOKEN START:",
   process.env.IG_ACCESS_TOKEN?.slice(0, 15)
 );
-
 console.log(
   "TOKEN END:",
   process.env.IG_ACCESS_TOKEN?.slice(-15)
